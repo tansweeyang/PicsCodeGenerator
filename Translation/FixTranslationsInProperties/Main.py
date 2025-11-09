@@ -39,7 +39,6 @@ class ConfirmationDialog(Toplevel):
         tk.Button(btn_frame, text="Confirm", command=self.on_confirm, bg="#D4EDDA", width=15).pack(side="left", padx=5)
         tk.Button(btn_frame, text="Cancel", command=self.on_cancel, width=10).pack(side="right", padx=5)
 
-        # --- New code to center on screen ---
         self.update_idletasks()  # Update widgets to get correct size
 
         # Get window width and height
@@ -56,7 +55,6 @@ class ConfirmationDialog(Toplevel):
 
         # Set the geometry
         self.geometry(f"{window_width}x{window_height}+{x_coord}+{y_coord}")
-        # --- End of new code ---
 
         self.wait_window()
 
@@ -247,7 +245,6 @@ class TranslatorApp:
         except:
             return True
 
-    # *** THIS IS THE MODIFIED FUNCTION ***
     def get_key_value_map(self, filepath):
         """Helper to read a properties file into a key->value dict."""
         kv_map = {}
@@ -286,7 +283,6 @@ class TranslatorApp:
         return kv_map
 
     # --- BULK MODE ---
-
     def find_bulk_matches(self):
         """Finds all potential replacements and populates the bulk tree."""
         # *** Use bulk tab's entries ***
