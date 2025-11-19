@@ -14,7 +14,7 @@ class ConfirmationDialog(Toplevel):
         self.transient(parent)
         self.grab_set()
 
-        tk.Label(self, text=f"File: {file_key[0]}", wraplength=480).pack(pady=(5, 0), padx=10)
+        tk.Label(self, text=f"File: {file_key[0]}", wraplength=480, anchor="w").pack(pady=(5, 0), padx=10, fill="x")
         tk.Label(self, text=f"Key: {file_key[1]}").pack(padx=10)
         tk.Label(self, text=f"English: {eng_val}", font=("Arial", 10, "bold")).pack(pady=(5, 10), padx=10)
 
@@ -131,10 +131,10 @@ class TranslatorApp:
         fr_top_bulk = tk.Frame(self.tab_bulk)
         fr_top_bulk.pack(fill="x", padx=5, pady=(0, 0))  # Removed top padding
 
-        tk.Label(fr_top_bulk, text="Paste translations (Eng <space> Chi):").pack(anchor="w")
+        tk.Label(fr_top_bulk, text="Paste translations (Eng <two spaces> Chi):").pack(anchor="w")
         self.translations_text = Text(fr_top_bulk, height=8)
         self.translations_text.pack(fill="x", pady=5)
-        self.translations_text.insert("1.0", "DHB Type雙重房屋福利類別\nViolated By 違反人士")
+        self.translations_text.insert("1.0", "DHB Type  雙重房屋福利類別\nViolated By  違反人士")
 
         tk.Button(fr_top_bulk, text="Search", command=self.find_bulk_matches,
                   font=("Arial", 11, "bold"), pady=5).pack(pady=5)
@@ -166,6 +166,8 @@ class TranslatorApp:
         self.bulk_tree.pack(fill="both", expand=True)
 
         self.bulk_tree.bind("<Double-1>", self.on_bulk_tree_double_click)
+
+        self.bulk_tree.bind("<Button-3>", self.on_bulk_right_click)
 
     def init_search_tab(self):
         # --- Create Path/Filter frame for this tab ---
@@ -205,7 +207,75 @@ class TranslatorApp:
 
         self.tree.bind("<Double-1>", self.on_tree_double_click)
 
+        self.tree.bind("<Button-3>", self.on_search_right_click)
+
+    def on_bulk_right_click(self, event):
+        """Handles the right-click event on the bulk tree for copying."""
+        # Identify the row that was right-clicked
+        item_id = self.bulk_tree.identify_row(event.y)
+        if not item_id:
+            return
+
+        # Select the row that was right-clicked
+        self.bulk_tree.selection_set(item_id)
+
+        try:
+            # Get the values from the selected row
+            item_data = self.bulk_tree.item(item_id, "values")
+            eng_val = item_data[2]
+            old_zh_val = item_data[3]
+            new_zh_val = item_data[4]
+
+            # Create the popup menu
+            popup_menu = tk.Menu(self.root, tearoff=0)
+            popup_menu.add_command(label="Copy English Value",
+                                   command=lambda: self.copy_to_clipboard(eng_val))
+            popup_menu.add_command(label="Copy Current Chinese",
+                                   command=lambda: self.copy_to_clipboard(old_zh_val))
+            popup_menu.add_command(label="Copy New Chinese",
+                                   command=lambda: self.copy_to_clipboard(new_zh_val))
+
+            # Display the menu at the cursor's location
+            popup_menu.post(event.x_root, event.y_root)
+        except Exception as e:
+            self.log(f"Error creating copy menu: {e}")
+
+    def on_search_right_click(self, event):
+        """Handles the right-click event on the search tree for copying."""
+        # Identify the row that was right-clicked
+        item_id = self.tree.identify_row(event.y)
+        if not item_id:
+            return
+
+        # Select the row that was right-clicked
+        self.tree.selection_set(item_id)
+
+        try:
+            # Get the values from the selected row
+            item_data = self.tree.item(item_id, "values")
+            eng_val = item_data[2]
+            zh_val = item_data[3]
+
+            # Create the popup menu
+            popup_menu = tk.Menu(self.root, tearoff=0)
+            popup_menu.add_command(label="Copy English Value",
+                                   command=lambda: self.copy_to_clipboard(eng_val))
+            popup_menu.add_command(label="Copy Chinese Value",
+                                   command=lambda: self.copy_to_clipboard(zh_val))
+
+            # Display the menu at the cursor's location
+            popup_menu.post(event.x_root, event.y_root)
+        except Exception as e:
+            self.log(f"Error creating copy menu: {e}")
+
     # --- SHARED HELPERS ---
+    def copy_to_clipboard(self, text):
+        """Helper to copy text to the system clipboard."""
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
+        # Optional: Log the action
+        self.log(f"📋 Copied to clipboard: \"{text[:50]}...\"")
+
     def log(self, msg):
         self.log_text.config(state="normal")
         self.log_text.insert(tk.END, msg + "\n")
@@ -227,7 +297,7 @@ class TranslatorApp:
         if not os.path.isdir(path): return None
         targets = []
         for r, d, f in os.walk(path):
-            d[:] = [x for x in d if x not in ['.git', 'node_modules', 'build']]
+            d[:] = [x for x in d if x not in ['.git', 'node_modules', 'build', 'target']]
             for file in f:
                 if file.endswith(".properties") and not file.endswith("_zh_TW.properties"):
                     if self.file_matches_filter(file, filt):
@@ -291,15 +361,31 @@ class TranslatorApp:
 
         raw_txt = self.translations_text.get("1.0", tk.END)
         translations = {}
+        malformed_lines = 0
         for line in raw_txt.splitlines():
             line = line.strip()
             if not line: continue
-            m = re.search(r'[\u4e00-\u9fff]', line)
-            if m:
-                idx = m.start()
-                translations[line[:idx].strip()] = line[idx:].strip()
 
-        if not translations: return messagebox.showerror("Error", "No translations found")
+            # Split on the first occurrence of two spaces
+            parts = line.split('  ', 1)
+
+            if len(parts) == 2:
+                eng_key = parts[0].strip()
+                chi_val = parts[1].strip()
+                if eng_key and chi_val:  # Ensure neither part is empty
+                    translations[eng_key] = chi_val
+                else:
+                    malformed_lines += 1  # Empty key or value
+            else:
+                malformed_lines += 1  # No '  ' delimiter found
+
+        if malformed_lines > 0:
+            self.log(f"⚠️ Skipped {malformed_lines} lines (missing '  ' delimiter or empty parts).")
+
+        if not translations:
+            self.log("❌ No valid translations found. Check your input format (Eng  Chi).")
+            return messagebox.showerror("Error",
+                                        "No valid translations found. Ensure you are using two spaces as a delimiter.")
 
         # Clear previous results
         self.bulk_tree.delete(*self.bulk_tree.get_children())
@@ -321,7 +407,7 @@ class TranslatorApp:
                     old_zh = zh_map.get(key, "[Not Found]")
 
                     if old_zh != new_zh:
-                        values = (os.path.basename(zh_path), key, eng_val, old_zh, new_zh)
+                        values = (zh_path, key, eng_val, old_zh, new_zh)
                         item_id = self.bulk_tree.insert("", "end", values=values)
                         self.bulk_matches_data[item_id] = (zh_path, key, eng_val, old_zh, new_zh)
                         match_count += 1
@@ -341,7 +427,7 @@ class TranslatorApp:
 
         zh_path, key, eng_val, old_zh, new_zh = self.bulk_matches_data[item_id]
 
-        dlg = ConfirmationDialog(self.root, (os.path.basename(zh_path), key), eng_val, old_zh, new_zh)
+        dlg = ConfirmationDialog(self.root, (zh_path, key), eng_val, old_zh, new_zh)
 
         if dlg.result:
             if self.update_single_key_in_file(zh_path, key, new_zh):
@@ -397,7 +483,7 @@ class TranslatorApp:
             for key, eng_val in eng_matches:
                 cur_zh = zh_vals.get(key, "[Not Found]")
                 basename = os.path.basename(zh_path)
-                item_id = self.tree.insert("", "end", values=(basename, key, eng_val, cur_zh))
+                item_id = self.tree.insert("", "end", values=(zh_path, key, eng_val, cur_zh))
                 self.search_matches_data[item_id] = (zh_path, key, eng_val, cur_zh)
                 match_count += 1
 
@@ -422,7 +508,7 @@ class TranslatorApp:
         if new_zh is not None and new_zh != cur_zh:
             if self.update_single_key_in_file(zh_path, key, new_zh):
                 basename = os.path.basename(zh_path)
-                self.tree.item(item_id, values=(basename, key, eng_val, new_zh))
+                self.tree.item(item_id, values=(zh_path, key, eng_val, new_zh))
                 self.search_matches_data[item_id] = (zh_path, key, eng_val, new_zh)
                 self.log(f"💾 Saved immediately: {key} -> {new_zh}")
             else:
